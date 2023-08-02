@@ -158,11 +158,18 @@ class SemanticArrangementDataset(torch.utils.data.Dataset):
             DMIN, DMAX = "depth_min", "depth_max"
         dmin = h5[DMIN][idx]
         dmax = h5[DMAX][idx]
-        rgb1 = img.PNGToNumpy(h5[RGB][idx])[:, :, :3] / 255.  # remove alpha
-        depth1 = h5[DEPTH][idx] / 20000. * (dmax - dmin) + dmin
-        seg1 = img.PNGToNumpy(h5[SEG][idx])
+        if isinstance(h5[RGB][idx], np.ndarray):
+            # From LGMCTS
+            rgb1 = h5[RGB][idx][:, :, :3] / 255.  # remove alpha
+            depth1 = h5[DEPTH][idx]
+            seg1 = h5[SEG][idx]
+        else:
+            rgb1 = img.PNGToNumpy(h5[RGB][idx])[:, :, :3] / 255.  # remove alpha
+            depth1 = h5[DEPTH][idx] / 20000. * (dmax - dmin) + dmin
+            seg1 = img.PNGToNumpy(h5[SEG][idx])
 
-        valid1 = np.logical_and(depth1 > 0.1, depth1 < 2.)
+        # valid1 = np.logical_and(depth1 > 0.1, depth1 < 2.)
+        valid1 = depth1 > 0.1  # FIXME: Currently, we disable the valid judge for far camera (Because VIMA uses far camera)
 
         # proj_matrix = h5['proj_matrix'][()]
         camera = cam.get_camera_from_h5(h5)
@@ -241,7 +248,12 @@ class SemanticArrangementDataset(torch.utils.data.Dataset):
         h5 = h5py.File(filename, 'r')
         ids = self._get_ids(h5)
         all_objs = sorted([o for o in ids.keys() if "object_" in o])
-        goal_specification = json.loads(str(np.array(h5["goal_specification"])))
+        try:
+            goal_specification = json.loads(str(np.array(h5["goal_specification"])))
+        except:
+            # Removing the starting b/ in Mac.
+            json_str = str(np.array(h5["goal_specification"]))[2:-1]
+            goal_specification = json.loads(json_str)
         num_rearrange_objs = len(goal_specification["rearrange"]["objects"])
         num_other_objs = len(goal_specification["anchor"]["objects"] + goal_specification["distract"]["objects"])
         assert len(all_objs) == num_rearrange_objs + num_other_objs, "{}, {}".format(len(all_objs), num_rearrange_objs + num_other_objs)
@@ -249,7 +261,8 @@ class SemanticArrangementDataset(torch.utils.data.Dataset):
         assert num_other_objs <= self.max_num_other_objects
 
         # important: only using the last step
-        step_t = num_rearrange_objs
+        # step_t = num_rearrange_objs
+        step_t = 1  # FIXME: Currently, we only have two steps
 
         target_objs = all_objs[:num_rearrange_objs]
         other_objs = all_objs[num_rearrange_objs:]
@@ -267,7 +280,7 @@ class SemanticArrangementDataset(torch.utils.data.Dataset):
 
         ###################################
         # getting scene images and point clouds
-        scene = self._get_images(h5, step_t, ee=True)
+        scene = self._get_images(h5, step_t, ee=False)  # FIXME: Currently I am using ee=False
         rgb, depth, seg, valid, xyz = scene
         if inference_mode:
             initial_scene = scene

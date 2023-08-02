@@ -10,12 +10,18 @@ from StructDiffusion.utils.brain2.pose import make_pose
 
 def get_camera_from_h5(h5):
     """ Simple reference to help make these """
-    proj_near = h5['cam_near'][()]
-    proj_far = h5['cam_far'][()]
-    proj_fov = h5['cam_fov'][()]
-    width = h5['cam_width'][()]
-    height = h5['cam_height'][()]
-    return GenericCameraReference(proj_near, proj_far, proj_fov, width, height)
+    if 'cam_near' not in h5:
+        intrinsics = h5['cam_intrinsics'][()]
+        width = h5['cam_width'][()]
+        height = h5['cam_height'][()]
+        return GenericCameraReference(img_width=width, img_height=height).create_from_intrinsics(intrinsics)
+    else:
+        proj_near = h5['cam_near'][()]
+        proj_far = h5['cam_far'][()]
+        proj_fov = h5['cam_fov'][()]
+        width = h5['cam_width'][()]
+        height = h5['cam_height'][()]
+        return GenericCameraReference(proj_near, proj_far, proj_fov, width, height)
 
 
 class GenericCameraReference(object):
@@ -46,6 +52,14 @@ class GenericCameraReference(object):
         self.fy = self.focal_length
         self.pose = None
         self.inv_pose = None
+
+    def create_from_intrinsics(self, intrinsics):
+        """Create a camera from intrinsics, adapting for LGMCTS"""
+        self.fx = intrinsics[0, 0]
+        self.fy = intrinsics[1, 1]
+        self.x_offset = intrinsics[0, 2]
+        self.y_offset = intrinsics[1, 2]
+        return self
 
     def set_pose(self, trans, rot):
         self.pose = make_pose(trans, rot)
